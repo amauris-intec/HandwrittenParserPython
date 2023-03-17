@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pprint import pformat
+from typing import Optional
 
 @dataclass
 class Token:
@@ -124,12 +125,171 @@ class MiLexer:
         else:
             self.agregar_token('MAS')
 
+
+class EOFError(Exception):
+    pass
+
+
+@dataclass
+class Nodo:
+  
+    nombre: str
+    hijos: list["Nodo"] = field(default_factory=list)
+    
+    def agregar(self, hijo):
+        if hijo:
+            self.hijos.append(hijo)
+
+    def __str__(self):
+        s = f"[{self.nombre}"
+        for hijo in self.hijos:
+            s += f" {hijo}"
+        s += "]"
+        return s
+
+
+class MiParser:
+
+    def aceptar(self, *alternativas: str) -> Optional[Token]:
+        if self.validar(*alternativas):
+            return self.avanzar()
+ 
+
+    def avanzar(self) -> Token:
+        if not self.eof():
+            token = self.mirar()
+            self.actual += 1
+            return token
+        else:
+            raise EOFError()
+ 
+
+    def validar(self, *alternativas: str) -> bool:
+        if self.eof():
+            return False
+        for alt in alternativas:
+            if self.mirar().nombre == alt:
+                return True
+        return False
+ 
+ 
+    def eof(self) -> bool:
+        try:
+            self.tokens[self.actual]
+            return False
+        except IndexError:
+            return True
+ 
+    def mirar(self) -> Token:
+        return self.tokens[self.actual]
+ 
+ 
+    def __init__(self, tokens: list[Token]):
+        self.tokens = tokens
+        self.actual = 0
+    
+    def prog(self):
+        nodo = Nodo("prog")
+        exp = self.exp()
+        nodo.agregar(exp)
+        while sep := self.aceptar("SEP"):
+            nodo.agregar(sep.valor)
+            exp = self.exp()
+            nodo.agregar(exp)
+        if not self.eof():
+            print("WTF")
+        return nodo
+
+    def exp(self):
+        # exp : ter exp2 ;
+        nodo = Nodo("exp")
+        ter = self.ter()
+        nodo.agregar(ter)
+        exp2 = self.exp2()
+        nodo.agregar(exp2)
+        return nodo
+
+    def exp2(self):
+        # exp2 : (MAS | MEN) ter exp2 | /*E*/ ;
+        nodo = Nodo("exp2")
+        if op := self.aceptar("MAS", "MEN"):
+            nodo.agregar(op.valor)
+            ter = self.ter()
+            nodo.agregar(ter)
+            exp2 = self.exp2()
+            nodo.agregar(exp2)
+        return nodo
+    
+    def ter(self):
+        # ter : fac ter2;
+        nodo = Nodo("ter")
+        fac = self.fac()
+        nodo.agregar(fac)
+        ter2 = self.ter2()
+        nodo.agregar(ter2)
+        return nodo
+
+
+    def ter2(self):
+        # ter2 : (POR | DIV) fac ter2 | /*E*/ ;
+        nodo = Nodo("ter2")
+        if op := self.aceptar("POR", "DIV"):
+            nodo.agregar(op.valor)
+            fac = self.fac()
+            nodo.agregar(fac)
+            ter2 = self.ter2()
+            nodo.agregar(ter2)
+        return nodo
+    
+    def fac(self):
+        #fac : GRP_1 exp GRP_2 | NUM ;
+        nodo = Nodo("fac")
+        if grp_1 := self.aceptar("GRP_1"):
+            nodo.agregar(grp_1.valor)
+            exp = self.exp()
+            nodo.agregar(exp)
+            grp_2 = self.aceptar("GRP_2")
+            nodo.agregar(grp_2.valor)
+        elif num := self.aceptar("NUM"):
+            nodo.agregar(num.valor)
+        else:
+            nodo.agregar(f"```{self.mirar().valor}```")
+        return nodo
+
+
+
+
+
+
+
 if __name__ == '__main__':
-    lexer = MiLexer("(&&&&&7*4)/\n55.+=a&mauris")
+    lexer = MiLexer('5+6*)2+3)')
     tokens, errores = lexer.escanear()
 
     print(f"Tokens: \n{pformat(tokens)}")
     print(f"Errores: \n{pformat(errores)}")
+    parser = MiParser(tokens)
+    tree = parser.prog()
+
+    print(tree)
+
+
+
+
+
+####### gramatica simplificada:######
+# grammar ExprParser;
+
+# prog : exp (SEP exp)* EOF;
+
+# exp : ter exp2 ;
+# exp2 : (MAS ter | MEN ter) exp2 | /*E*/ ;
+
+# ter : fac ter2;
+# ter2 : (POR fac | DIV fac) ter2 | /*E*/ ;
+
+
+# fac : GRP_1 exp GRP_2 | NUM ;
 
 # PI : 'pi' ;
 
